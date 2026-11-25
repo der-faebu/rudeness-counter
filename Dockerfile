@@ -1,7 +1,7 @@
 FROM python:3.13-alpine
 
 WORKDIR /app
-COPY server.py index.html ./
+COPY server.py index.html style.css app.js ./
 
 # Bookings live in a volume so they survive rebuilds and restarts.
 ENV HOST=0.0.0.0 \

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Rudeness Counter: a tiny offline server.
 
-Serves index.html and keeps every booking in rudeness.json next to it.
+Serves index.html (with style.css and app.js) and keeps every booking in rudeness.json next to it.
 Standard library only.
 
     python3 server.py                 # http://127.0.0.1:8000, this machine only
@@ -20,7 +20,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-PAGE = HERE / "index.html"
+STATIC = {
+    "/": (HERE / "index.html", "text/html; charset=utf-8"),
+    "/index.html": (HERE / "index.html", "text/html; charset=utf-8"),
+    "/style.css": (HERE / "style.css", "text/css; charset=utf-8"),
+    "/app.js": (HERE / "app.js", "text/javascript; charset=utf-8"),
+}
 # RUDENESS_DATA overrides where the JSON lives (the Docker image points it at a volume).
 DATA = Path(os.environ.get("RUDENESS_DATA", HERE / "rudeness.json")).resolve()
 
@@ -79,10 +84,11 @@ class Handler(BaseHTTPRequestHandler):
         return body
 
     def do_GET(self):
-        if self.path in ("/", "/index.html"):
-            body = PAGE.read_bytes()
+        if self.path in STATIC:
+            path, content_type = STATIC[self.path]
+            body = path.read_bytes()
             self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
@@ -135,7 +141,8 @@ class Handler(BaseHTTPRequestHandler):
             data = load()
             for side in ("a", "b"):
                 name = clean_name(body.get(side))
-                if name:
+                # A name that has been set is final; only the placeholder can be replaced.
+                if name and data["names"][side] == DEFAULT["names"][side]:
                     data["names"][side] = name
             save(data)
             self.send_json(data)
