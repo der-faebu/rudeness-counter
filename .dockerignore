@@ -3,3 +3,4 @@ rudeness.json
 Dockerfile
 compose.yaml
 .dockerignore
+.github
