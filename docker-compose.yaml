@@ -1,0 +1,12 @@
+services:
+  rudeness-counter:
+    build: .
+    image: rudeness-counter
+    ports:
+      - "8000:8000"
+    volumes:
+      - rudeness-data:/data
+    restart: unless-stopped
+
+volumes:
+  rudeness-data:

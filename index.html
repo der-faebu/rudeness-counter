@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rudeness Counter</title>
+<style>
+/* Layout: a referee's match sheet. Two scoreboards face off at the top, the log below is grouped by day like a match diary. */
+:root {
+  --bg: #eef2ef;          /* pitch-tinted paper */
+  --surface: #ffffff;
+  --ink: #15201b;
+  --muted: #5d6b64;
+  --line: #d3dcd6;
+  --pitch: #1f6b45;       /* accent */
+  --pitch-soft: #dcebe2;
+  --red: #d33a3a;
+  --red-ink: #ffffff;
+  --focus: #1f6b45;
+
+  --display: "Oswald", "Bebas Neue", "Arial Narrow", "Liberation Sans Narrow", "DejaVu Sans Condensed", Impact, sans-serif;
+  --body: system-ui, -apple-system, "Segoe UI", Cantarell, "Noto Sans", sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1613; --surface: #17211c; --ink: #e6eee9; --muted: #92a39a;
+    --line: #2a3832; --pitch: #4fbf85; --pitch-soft: #1c3428;
+    --red: #e05252; --red-ink: #ffffff;
+    --focus: #4fbf85; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1613; --surface: #17211c; --ink: #e6eee9; --muted: #92a39a;
+  --line: #2a3832; --pitch: #4fbf85; --pitch-soft: #1c3428;
+  --red: #e05252; --red-ink: #ffffff;
+  --focus: #4fbf85; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--body); font-size: 15px; line-height: 1.5;
+}
+.wrap {
+  max-width: 920px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 56px;
+  display: grid; gap: 28px;
+}
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Header */
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 16px; }
+h1 {
+  font-family: var(--display); font-weight: 900; text-transform: uppercase;
+  font-size: clamp(2.2rem, 6vw, 3.4rem); line-height: .9; margin: 0; letter-spacing: .01em;
+  text-wrap: balance;
+}
+.sub { margin: 6px 0 0; color: var(--muted); max-width: 52ch; }
+.status { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: .04em; }
+.status.warn { color: var(--red); }
+
+/* Verdict strip */
+.verdict {
+  font-family: var(--display); font-weight: 700; text-transform: uppercase;
+  font-size: 1.35rem; letter-spacing: .03em; text-align: center;
+  padding: 10px 14px; border-radius: 6px; background: var(--pitch-soft); color: var(--pitch);
+  text-wrap: balance;
+}
+
+/* Scoreboards */
+.board { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: stretch; }
+.vs {
+  align-self: center; font-family: var(--display); font-weight: 900; font-size: 1.4rem;
+  color: var(--muted); text-transform: uppercase;
+}
+.side {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 18px; display: grid; gap: 14px; min-width: 0; align-content: start;
+}
+.side.leading { border-color: var(--red); box-shadow: 0 0 0 1px var(--red) inset; }
+.name-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.name {
+  flex: 1; min-width: 0; border: 1px dashed transparent; border-radius: 4px; background: none;
+  font-family: var(--display); font-weight: 700; font-size: 1.6rem; text-transform: uppercase;
+  letter-spacing: .02em; padding: 0 4px; margin-left: -5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.name:hover, .name:focus { border-color: var(--line); }
+.tag {
+  font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--red-ink); background: var(--red); padding: 2px 6px; border-radius: 3px; white-space: nowrap;
+}
+.count {
+  font-family: var(--display); font-weight: 900; font-size: clamp(4.5rem, 14vw, 7.5rem);
+  line-height: .85; font-variant-numeric: tabular-nums;
+}
+.count-label { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.cards { display: flex; flex-wrap: wrap; gap: 4px; min-height: 22px; }
+.pip { width: 8px; height: 20px; border-radius: 2px; background: var(--red); transform: rotate(-4deg); }
+.split { display: flex; flex-wrap: wrap; gap: 4px 14px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.split b { color: var(--ink); font-weight: 500; }
+
+.btn {
+  border: 0; border-radius: 6px; padding: 10px 12px; cursor: pointer; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  transition: transform .08s ease, filter .15s ease;
+}
+.btn:hover { filter: brightness(1.05); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-r { background: var(--red); color: var(--red-ink); }
+.btn-ghost { background: transparent; border: 1px solid var(--line); color: var(--ink); }
+.btn-ink { background: var(--ink); color: var(--bg); }
+.btn-nice { background: var(--pitch); color: var(--bg); }
+.book-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.book-btns .btn { padding-block: 12px; min-width: 0; }
+
+/* Booking form */
+form.booking { display: grid; gap: 10px; padding-top: 4px; border-top: 1px dashed var(--line); }
+form.booking label { font-size: 13px; color: var(--muted); }
+form.booking .field { display: grid; gap: 4px; }
+form.booking textarea, form.booking input[type="date"] {
+  width: 100%; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--bg);
+}
+form.booking textarea { resize: vertical; min-height: 64px; }
+form.booking input[type="date"] { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.form-row { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+
+/* Log */
+section.log { display: grid; gap: 12px; }
+.log-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h2 {
+  font-family: var(--display); font-weight: 700; text-transform: uppercase; font-size: 1.5rem;
+  margin: 0; letter-spacing: .03em;
+}
+.filters { display: flex; gap: 4px; flex-wrap: wrap; }
+.chip {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 999px;
+  padding: 3px 11px; font-size: 13px; cursor: pointer; max-width: 16ch;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.days { display: grid; gap: 18px; }
+.day { display: grid; gap: 6px; }
+.day-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding-inline: 4px; }
+.day-name { font-family: var(--display); font-weight: 700; text-transform: uppercase; font-size: 1.1rem; letter-spacing: .03em; }
+.day-date { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.day-score { font-family: var(--mono); font-size: 12px; color: var(--muted); text-align: right; }
+ol.entries { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+ol.entries li {
+  display: grid; grid-template-columns: 8px 1fr auto; gap: 14px; align-items: start;
+  padding: 12px 16px; border-top: 1px solid var(--line);
+}
+ol.entries li:first-child { border-top: 0; }
+.entry-card { width: 8px; height: 20px; border-radius: 2px; margin-top: 2px; background: var(--red); transform: rotate(-4deg); }
+.entry-card.nice { background: var(--pitch); transform: rotate(4deg); }
+.entry-card.spent { opacity: .35; }
+.struck { text-decoration: line-through; text-decoration-color: var(--muted); }
+.entry-body { min-width: 0; }
+.entry-title { font-weight: 600; }
+.quote { margin: 2px 0 0; color: var(--ink); overflow-wrap: anywhere; }
+.quote::before { content: "\201C"; } .quote::after { content: "\201D"; }
+.meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.rescind { font-size: 12px; padding: 4px 8px; }
+.confirm { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.empty { padding: 32px 16px; text-align: center; color: var(--muted); }
+.empty strong { display: block; color: var(--ink); font-family: var(--display); text-transform: uppercase; font-size: 1.3rem; letter-spacing: .03em; }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 6px; font-size: 14px;
+  max-width: calc(100% - 32px);
+}
+
+@media (max-width: 620px) {
+  .board { grid-template-columns: 1fr; }
+  .vs { justify-self: center; }
+  ol.entries li { grid-template-columns: 8px 1fr; }
+  ol.entries li .actions { grid-column: 2; justify-self: start; }
+}
+@media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Rudeness Counter</h1>
+      <p class="sub">Log it when someone is rude. Log it when they're nice too, and each nice act cancels one rude one. Tap a name to change it.</p>
+    </div>
+    <div class="status" id="status" role="status">Connecting…</div>
+  </header>
+
+  <div class="verdict" id="verdict">Nobody has been rude yet.</div>
+
+  <div class="board">
+    <div class="side" id="side-a"></div>
+    <div class="vs" aria-hidden="true">vs</div>
+    <div class="side" id="side-b"></div>
+  </div>
+
+  <section class="log" aria-labelledby="log-title">
+    <div class="log-head">
+      <h2 id="log-title">Match report</h2>
+      <div class="filters" id="filters" role="group" aria-label="Filter by person"></div>
+    </div>
+    <div class="days" id="days"></div>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+  const DEFAULT_NAMES = { a: "Player one", b: "Player two" };
+  const POLL_MS = 4000;
+
+  const state = {
+    names: { ...DEFAULT_NAMES },
+    incidents: [],          // [{id, who, kind: "rude"|"nice", date: "YYYY-MM-DD", quote, at}]
+    loaded: false,
+    online: false,
+    openForm: null,         // {who, kind}
+    confirming: null,       // incident id
+    filter: "all",
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, props = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(props)) {
+      if (k === "class") n.className = v;
+      else if (k === "text") n.textContent = v;
+      else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+      else if (v !== undefined && v !== null && v !== false) n.setAttribute(k, v === true ? "" : v);
+    }
+    for (const kid of kids) if (kid) n.append(kid);
+    return n;
+  };
+
+  let toastTimer;
+  function toast(msg) {
+    const t = $("toast"); t.textContent = msg; t.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 2400);
+  }
+  function setStatus(msg, warn = false) {
+    const s = $("status"); s.textContent = msg; s.classList.toggle("warn", warn);
+  }
+
+  /* ---------- Dates (all in the viewer's local time) ---------- */
+  const pad = (n) => String(n).padStart(2, "0");
+  const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const parseYmd = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+  const today = () => ymd(new Date());
+  const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return ymd(d); };
+  const validYmd = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(parseYmd(s));
+
+  function dayLabel(date) {
+    if (date === today()) return "Today";
+    if (date === daysAgo(1)) return "Yesterday";
+    return parseYmd(date).toLocaleDateString(undefined, { weekday: "long" });
+  }
+  const longDate = (date) => parseYmd(date).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+  const timeOf = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }); };
+
+  const nameOf = (who) => state.names[who] || DEFAULT_NAMES[who];
+  const chrono = (x, y) => (x.date + x.at).localeCompare(y.date + y.at);
+
+  // Walk each person's entries in date order: a nice act cancels the oldest
+  // rude one still standing, and does nothing when there's none to cancel.
+  // Marks each entry with .effect: "counts" | "cancelled" (rude) | "cancels" | "unused" (nice).
+  function settle() {
+    for (const who of ["a", "b"]) {
+      const standing = [];
+      for (const i of state.incidents.filter((x) => x.who === who).sort(chrono)) {
+        if (i.kind === "rude") { i.effect = "counts"; i.cancelledBy = null; standing.push(i); }
+        else if (standing.length) { const r = standing.shift(); r.effect = "cancelled"; r.cancelledBy = i; i.effect = "cancels"; i.cancels = r; }
+        else { i.effect = "unused"; i.cancels = null; }
+      }
+    }
+  }
+
+  function tally(who) {
+    const list = state.incidents.filter((i) => i.who === who);
+    const rude = list.filter((i) => i.kind === "rude"), nice = list.filter((i) => i.kind === "nice");
+    const t = today(), week = daysAgo(6);
+    const net = (xs) => xs.filter((i) => i.kind === "rude").length - xs.filter((i) => i.kind === "nice").length;
+    return {
+      score: rude.filter((i) => i.effect === "counts").length,
+      rude: rude.length,
+      nice: nice.length,
+      today: net(list.filter((i) => i.date === t)),
+      week: net(list.filter((i) => i.date >= week && i.date <= t)),
+    };
+  }
+  const signed = (n) => (n > 0 ? "+" + n : n < 0 ? "−" + -n : "0");
+
+  /* ---------- Server ---------- */
+  async function api(method, path, body) {
+    const res = await fetch(path, {
+      method,
+      headers: body ? { "Content-Type": "application/json" } : {},
+      body: body ? JSON.stringify(body) : undefined,
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+    return res.json();
+  }
+
+  function apply(data) {
+    const names = (data && data.names) || {};
+    state.names = {
+      a: (typeof names.a === "string" && names.a) || DEFAULT_NAMES.a,
+      b: (typeof names.b === "string" && names.b) || DEFAULT_NAMES.b,
+    };
+    state.incidents = (Array.isArray(data && data.incidents) ? data.incidents : []).map((x) => {
+      const at = typeof x.at === "string" ? x.at : "";
+      const fromAt = at && !isNaN(new Date(at)) ? ymd(new Date(at)) : today();
+      return {
+        id: String(x.id || ""),
+        who: x.who === "b" ? "b" : "a",
+        kind: x.kind === "nice" ? "nice" : "rude",   // older entries were all rude
+        date: validYmd(x.date) ? x.date : fromAt,   // older entries only had a timestamp
+        quote: typeof x.quote === "string" ? x.quote : "",
+        at,
+      };
+    });
+    settle();
+    state.loaded = true;
+    state.online = true;
+    setStatus("Saved to rudeness.json");
+  }
+
+  let lastJson = "";
+  async function refresh() {
+    try {
+      const data = await api("GET", "/api/data");
+      const json = JSON.stringify(data);
+      if (json !== lastJson) {
+        lastJson = json; apply(data);
+        // Don't wipe a half-typed entry or name when the other person logs something.
+        const busy = state.openForm || (document.activeElement && document.activeElement.classList.contains("name"));
+        if (!busy) render();
+      } else if (!state.online) { state.online = true; setStatus("Saved to rudeness.json"); render(); }
+    } catch (_) {
+      state.loaded = true;
+      if (state.online || !lastJson) {
+        state.online = false;
+        setStatus(location.protocol === "file:" ? "Start server.py, then open http://127.0.0.1:8000" : "Can't reach server.py. Is it still running?", true);
+        render();
+      }
+    }
+  }
+
+  /* ---------- Render ---------- */
+  function render() {
+    const ta = tally("a"), tb = tally("b");
+    const leader = ta.score === tb.score ? null : ta.score > tb.score ? "a" : "b";
+
+    const v = $("verdict");
+    if (!state.loaded) v.textContent = "Loading…";
+    else if (!state.incidents.length) v.textContent = "Nobody has been rude yet.";
+    else if (!ta.score && !tb.score) v.textContent = "All square. Every rude remark has been made up for.";
+    else if (!leader) v.textContent = `Dead level at ${ta.score} each. Equally rude.`;
+    else v.textContent = `${nameOf(leader)} is ruder by ${Math.abs(ta.score - tb.score)}`;
+
+    renderSide("a", ta, leader === "a");
+    renderSide("b", tb, leader === "b");
+    renderFilters();
+    renderLog();
+  }
+
+  function renderSide(who, t, leading) {
+    const box = $("side-" + who);
+    box.classList.toggle("leading", leading);
+    box.replaceChildren();
+
+    const nameInput = el("input", {
+      class: "name", id: "name-" + who, maxlength: "28",
+      "aria-label": "Name for side " + who.toUpperCase(), disabled: !state.online,
+    });
+    nameInput.value = nameOf(who);
+    nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") nameInput.blur(); if (e.key === "Escape") { nameInput.value = nameOf(who); nameInput.blur(); } });
+    nameInput.addEventListener("change", () => saveName(who, nameInput.value));
+    box.append(el("div", { class: "name-row" }, nameInput, leading ? el("span", { class: "tag", text: "Ruder" }) : null));
+
+    box.append(el("div", {},
+      el("div", { class: "count", text: String(t.score) }),
+      el("div", { class: "count-label", text: t.score === 1 ? "rude remark standing" : "rude remarks standing" })
+    ));
+
+    const pips = el("div", { class: "cards", "aria-hidden": "true" });
+    for (let i = 0; i < Math.min(t.score, 60); i++) pips.append(el("span", { class: "pip" }));
+    box.append(pips);
+
+    const stat = (n, label) => el("span", {}, el("b", { text: n }), document.createTextNode(" " + label));
+    box.append(el("div", { class: "split" },
+      stat(String(t.rude), "rude"),
+      stat(String(t.nice), "nice"),
+      stat(signed(t.today), "today"),
+      stat(signed(t.week), "last 7 days")
+    ));
+
+    const form = state.openForm && state.openForm.who === who ? state.openForm : null;
+    if (!form) {
+      const open = (kind) => () => { state.openForm = { who, kind }; state.confirming = null; render(); };
+      box.append(el("div", { class: "book-btns" },
+        el("button", { class: "btn btn-r", type: "button", id: "rude-" + who, disabled: !state.online, onclick: open("rude") }, document.createTextNode("Was rude")),
+        el("button", { class: "btn btn-nice", type: "button", id: "nice-" + who, disabled: !state.online, onclick: open("nice") }, document.createTextNode("Was nice"))
+      ));
+    } else {
+      const nice = form.kind === "nice";
+      const quote = el("textarea", { id: "quote-" + who, maxlength: "280", placeholder: nice ? "e.g. Brought me a coffee without asking" : "e.g. “Did you even read the ticket?”" });
+      const date = el("input", { type: "date", id: "date-" + who, max: today(), required: true });
+      date.value = today();
+      const formEl = el("form", { class: "booking" },
+        el("div", { class: "field" }, el("label", { for: "quote-" + who, text: nice ? `What did ${nameOf(who)} do? (optional)` : `What did ${nameOf(who)} say? (optional)` }), quote),
+        el("div", { class: "field" }, el("label", { for: "date-" + who, text: "When" }), date),
+        el("div", { class: "form-row" },
+          el("button", { class: "btn btn-ghost", type: "button", onclick: () => { state.openForm = null; render(); } }, document.createTextNode("Cancel")),
+          el("button", { class: "btn " + (nice ? "btn-nice" : "btn-r"), type: "submit", id: "submit-" + who }, document.createTextNode(nice ? "Log nice" : "Log rude"))
+        )
+      );
+      formEl.addEventListener("submit", (e) => { e.preventDefault(); addIncident(who, form.kind, quote.value, date.value, formEl); });
+      box.append(formEl);
+      setTimeout(() => quote.focus(), 0);
+    }
+  }
+
+  function renderFilters() {
+    const f = $("filters"); f.replaceChildren();
+    [["all", "Both"], ["a", nameOf("a")], ["b", nameOf("b")]].forEach(([key, label]) => {
+      f.append(el("button", {
+        class: "chip", type: "button", "aria-pressed": String(state.filter === key), title: label, text: label,
+        onclick: () => { state.filter = key; render(); },
+      }));
+    });
+  }
+
+  function renderLog() {
+    const root = $("days"); root.replaceChildren();
+    const message = (title, text) => {
+      root.append(el("ol", { class: "entries" },
+        el("li", { class: "empty", style: "display:block" }, title ? el("strong", { text: title }) : null, el("div", { text }))));
+    };
+    if (!state.loaded) return message("", "Loading…");
+    if (!state.online && !state.incidents.length) {
+      return message("Server not running", "Run  python3 server.py  in this folder, then open http://127.0.0.1:8000 in your browser.");
+    }
+    const list = state.incidents
+      .filter((i) => state.filter === "all" || i.who === state.filter)
+      .sort((x, y) => chrono(y, x));
+    if (!list.length) {
+      return message("Nothing logged yet", "When someone is rude or nice, press the button under their name. It shows up here under the day it happened.");
+    }
+
+    const groups = new Map();
+    for (const i of list) { if (!groups.has(i.date)) groups.set(i.date, []); groups.get(i.date).push(i); }
+
+    for (const [date, items] of groups) {
+      const net = (who) => items.filter((i) => i.who === who).reduce((n, i) => n + (i.kind === "rude" ? 1 : -1), 0);
+      const score = state.filter === "all"
+        ? `${nameOf("a")} ${signed(net("a"))} · ${nameOf("b")} ${signed(net("b"))}`
+        : signed(net(state.filter));
+      const ol = el("ol", { class: "entries" });
+      for (const i of items) {
+        const actions = el("div", { class: "actions" });
+        if (state.online) {
+          if (state.confirming === i.id) {
+            actions.append(el("div", { class: "confirm" },
+              el("button", { class: "btn btn-ghost rescind", type: "button", onclick: () => { state.confirming = null; render(); }, text: "Keep" }),
+              el("button", { class: "btn btn-ink rescind", type: "button", onclick: () => removeIncident(i.id), text: "Remove" })
+            ));
+          } else {
+            actions.append(el("button", { class: "btn btn-ghost rescind", type: "button", onclick: () => { state.confirming = i.id; render(); }, text: "Appeal" }));
+          }
+        }
+        const logged = i.at ? (ymd(new Date(i.at)) === date ? "at " + timeOf(i.at) : "logged later") : "";
+        const short = (d) => (d === today() ? "today" : d === daysAgo(1) ? "yesterday" : longDate(d));
+        const effect = {
+          counts: "",
+          cancelled: i.cancelledBy ? `made up for ${short(i.cancelledBy.date)}` : "",
+          cancels: i.cancels ? `cancels the rude one from ${short(i.cancels.date)}` : "",
+          unused: "nothing to cancel",
+        }[i.effect] || "";
+        const meta = [logged, effect].filter(Boolean).join(" · ");
+        const spent = i.effect === "cancelled" || i.effect === "unused";
+        ol.append(el("li", {},
+          el("span", { class: "entry-card" + (i.kind === "nice" ? " nice" : "") + (spent ? " spent" : ""), "aria-hidden": "true" }),
+          el("div", { class: "entry-body" },
+            el("div", { class: "entry-title" + (i.effect === "cancelled" ? " struck" : ""), text: `${nameOf(i.who)} was ${i.kind}` }),
+            i.quote ? el("p", { class: "quote", text: i.quote }) : null,
+            meta ? el("div", { class: "meta", text: meta }) : null
+          ),
+          actions
+        ));
+      }
+      root.append(el("section", { class: "day", "aria-label": longDate(date) },
+        el("div", { class: "day-head" },
+          el("div", {}, el("span", { class: "day-name", text: dayLabel(date) }), document.createTextNode(" "), el("span", { class: "day-date", text: longDate(date) })),
+          el("div", { class: "day-score", text: score })
+        ),
+        ol
+      ));
+    }
+  }
+
+  /* ---------- Actions ---------- */
+  function saved(data) { lastJson = JSON.stringify(data); apply(data); }
+  const failed = () => toast("That didn't save. Is server.py still running?");
+
+  async function addIncident(who, kind, quote, date, form) {
+    if (!validYmd(date) || date > today()) { toast("Pick a date that isn't in the future."); return; }
+    const btn = form.querySelector("[type=submit]"); btn.disabled = true;
+    try {
+      saved(await api("POST", "/api/incidents", { who, kind, date, quote: quote.trim().slice(0, 280) }));
+      state.openForm = null;
+      toast(`Logged: ${nameOf(who)} was ${kind} ${date === today() ? "today" : "on " + longDate(date)}`);
+      render();
+    } catch (_) { btn.disabled = false; failed(); }
+  }
+
+  async function removeIncident(id) {
+    try {
+      saved(await api("DELETE", "/api/incidents/" + encodeURIComponent(id)));
+      state.confirming = null; toast("Removed"); render();
+    } catch (_) { failed(); }
+  }
+
+  async function saveName(who, raw) {
+    const name = raw.trim().slice(0, 28);
+    if (!name || name === nameOf(who)) { render(); return; }
+    try { saved(await api("PUT", "/api/names", { [who]: name })); toast("Name saved"); }
+    catch (_) { failed(); }
+    render();
+  }
+
+  /* ---------- Boot ---------- */
+  render();
+  refresh();
+  setInterval(() => { if (!document.hidden) refresh(); }, POLL_MS);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+})();
+</script>
+</body>
+</html>

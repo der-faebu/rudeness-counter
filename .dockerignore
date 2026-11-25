@@ -1,0 +1,5 @@
+rudeness.json
+.rudeness-*
+Dockerfile
+compose.yaml
+.dockerignore
